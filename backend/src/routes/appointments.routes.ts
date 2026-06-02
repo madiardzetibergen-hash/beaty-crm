@@ -338,6 +338,151 @@ appointmentsRoutes.patch("/:id/status", authMiddleware, async (req, res) => {
     });
   }
 });
+const updateAppointmentSchema = z.object({
+  masterId: z.number().int().optional(),
+  serviceId: z.number().int().optional(),
+  optionIds: z.array(z.number().int()).optional(),
+  startTime: z.string().datetime().optional(),
+  notes: z.string().optional(),
+  status: z
+    .enum([
+      "booked",
+      "confirmed",
+      "completed",
+      "cancelled",
+      "no_show",
+      "rescheduled",
+    ])
+    .optional(),
+});
+
+appointmentsRoutes.patch(
+  "/:id",
+  authMiddleware,
+  allowRoles(["owner", "admin"]),
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const data = updateAppointmentSchema.parse(req.body);
+
+      const existingAppointments = await db
+        .select()
+        .from(appointments)
+        .where(eq(appointments.id, id));
+
+      const existingAppointment = existingAppointments[0];
+
+      if (!existingAppointment) {
+        return res.status(404).json({
+          message: "Appointment not found",
+        });
+      }
+
+      const finalMasterId = data.masterId ?? existingAppointment.masterId;
+      const finalServiceId = data.serviceId ?? existingAppointment.serviceId;
+      const finalStartTime = data.startTime
+        ? new Date(data.startTime)
+        : existingAppointment.startTime;
+
+      const [service] = await db
+        .select()
+        .from(services)
+        .where(eq(services.id, finalServiceId));
+
+      if (!service) {
+        return res.status(404).json({
+          message: "Service not found",
+        });
+      }
+
+      const finalOptionIds = data.optionIds ?? [];
+
+      const selectedOptions =
+        finalOptionIds.length > 0
+          ? await db
+              .select()
+              .from(serviceOptions)
+              .where(inArray(serviceOptions.id, finalOptionIds))
+          : [];
+
+      const optionsDuration = selectedOptions.reduce(
+        (sum, option) => sum + option.durationDeltaMinutes,
+        0
+      );
+
+      const optionsPrice = selectedOptions.reduce(
+        (sum, option) => sum + option.priceDelta,
+        0
+      );
+
+      const totalDuration = service.durationMinutes + optionsDuration;
+      const totalPrice = service.basePrice + optionsPrice;
+      const finalEndTime = addMinutes(finalStartTime, totalDuration);
+
+      const conflicts = await db
+        .select()
+        .from(appointments)
+        .where(
+          and(
+            ne(appointments.id, id),
+            eq(appointments.masterId, finalMasterId),
+            ne(appointments.status, "cancelled" as const),
+            lt(appointments.startTime, finalEndTime),
+            gt(appointments.endTime, finalStartTime)
+          )
+        );
+
+      if (conflicts.length > 0) {
+        return res.status(409).json({
+          message: "This time is already booked",
+          conflicts,
+        });
+      }
+
+      const [updatedAppointment] = await db
+        .update(appointments)
+        .set({
+          masterId: finalMasterId,
+          serviceId: finalServiceId,
+          startTime: finalStartTime,
+          endTime: finalEndTime,
+          totalPrice,
+          notes: data.notes ?? existingAppointment.notes,
+          status: data.status ?? "rescheduled",
+          updatedAt: new Date(),
+        })
+        .where(eq(appointments.id, id))
+        .returning();
+
+      if (data.optionIds) {
+        await db
+          .delete(appointmentOptions)
+          .where(eq(appointmentOptions.appointmentId, id));
+
+        if (data.optionIds.length > 0) {
+          await db.insert(appointmentOptions).values(
+            data.optionIds.map((serviceOptionId) => ({
+              appointmentId: id,
+              serviceOptionId,
+            }))
+          );
+        }
+      }
+
+      return res.json({
+        appointment: updatedAppointment,
+        totalDuration,
+        totalPrice,
+        options: selectedOptions,
+      });
+    } catch (error) {
+      return res.status(400).json({
+        message: "Invalid update appointment data",
+        error,
+      });
+    }
+  }
+);
 
 appointmentsRoutes.delete(
   "/:id",
