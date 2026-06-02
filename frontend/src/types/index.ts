@@ -65,3 +65,30 @@ export type AppointmentDetails = AppointmentListItem & {
     durationDeltaMinutes: number;
   }[];
 };
+export type Client = {
+  id: number;
+  name: string;
+  phone: string | null;
+  phoneLast4: string | null;
+  instagram: string | null;
+  notes: string | null;
+  createdAt: string;
+};
+
+export type ClientAppointment = {
+  id: number;
+  startTime: string;
+  endTime: string;
+  totalPrice: number;
+  status: string;
+  notes: string | null;
+
+  masterId: number;
+  masterName: string;
+  masterColorName: string;
+  masterColorHex: string;
+
+  serviceId: number;
+  serviceName: string;
+  serviceCategory: string;
+};

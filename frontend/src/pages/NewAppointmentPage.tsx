@@ -1,12 +1,22 @@
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { createAppointment } from "../api/appointments";
+import { getClients } from "../api/clients";
 import { getMasters } from "../api/masters";
 import { getServiceOptions, getServices } from "../api/services";
-import type { Master, Service, ServiceOption } from "../types";
 import { BottomNav } from "../components/BottomNav";
+import { CuteLoader } from "../components/CuteLoader";
+import { ListSkeleton } from "../components/Skeleton";
+import { Toast } from "../components/Toast";
+
+import type { Client, Master, Service, ServiceOption } from "../types";
+
+type ToastState = {
+  message: string;
+  type: "success" | "error" | "info";
+};
 
 function getTodayDateInput() {
   return new Date().toISOString().slice(0, 10);
@@ -14,6 +24,7 @@ function getTodayDateInput() {
 
 export function NewAppointmentPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [masters, setMasters] = useState<Master[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -21,6 +32,12 @@ export function NewAppointmentPage() {
 
   const [clientName, setClientName] = useState("");
   const [phoneLast4, setPhoneLast4] = useState("");
+
+  const [clientSearch, setClientSearch] = useState("");
+  const [foundClients, setFoundClients] = useState<Client[]>([]);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [searchingClients, setSearchingClients] = useState(false);
+
   const [masterId, setMasterId] = useState<number | null>(null);
   const [category, setCategory] = useState("Ресницы");
   const [serviceId, setServiceId] = useState<number | null>(null);
@@ -29,17 +46,32 @@ export function NewAppointmentPage() {
   const [time, setTime] = useState("10:00");
   const [notes, setNotes] = useState("");
 
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [toast, setToast] = useState<ToastState | null>(null);
+
   const selectedService = services.find((service) => service.id === serviceId);
   const selectedMaster = masters.find((master) => master.id === masterId);
 
-  const filteredServices = services.filter((service) => service.category === category);
-  const filteredOptions = options.filter((option) => option.category === category);
+  const filteredServices = services.filter(
+    (service) => service.category === category
+  );
 
-  const selectedOptions = options.filter((option) => optionIds.includes(option.id));
+  const filteredOptions = options.filter(
+    (option) => option.category === category
+  );
+
+  const selectedOptions = options.filter((option) =>
+    optionIds.includes(option.id)
+  );
 
   const totalPrice = useMemo(() => {
     const base = selectedService?.basePrice ?? 0;
-    const extra = selectedOptions.reduce((sum, option) => sum + option.priceDelta, 0);
+    const extra = selectedOptions.reduce(
+      (sum, option) => sum + option.priceDelta,
+      0
+    );
 
     return base + extra;
   }, [selectedService, selectedOptions]);
@@ -54,44 +86,132 @@ export function NewAppointmentPage() {
     return base + extra;
   }, [selectedService, selectedOptions]);
 
+  function showToast(message: string, type: ToastState["type"] = "info") {
+    setToast({ message, type });
+  }
+
   function toggleOption(id: number) {
     setOptionIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+      prev.includes(id)
+        ? prev.filter((item) => item !== id)
+        : [...prev, id]
     );
   }
 
+  async function searchClients(value: string) {
+    setClientSearch(value);
+    setClientName(value);
+    setSelectedClient(null);
+
+    if (value.trim().length < 2) {
+      setFoundClients([]);
+      return;
+    }
+
+    try {
+      setSearchingClients(true);
+
+      const data = await getClients(value);
+      setFoundClients(data.slice(0, 5));
+    } catch {
+      showToast("Котик не смог найти клиентов", "error");
+    } finally {
+      setSearchingClients(false);
+    }
+  }
+
+  function selectClient(client: Client) {
+    setSelectedClient(client);
+    setClientName(client.name);
+    setClientSearch(client.name);
+    setPhoneLast4(client.phoneLast4 ?? "");
+    setFoundClients([]);
+  }
+
+  function clearSelectedClient() {
+    setSelectedClient(null);
+    setClientSearch("");
+    setClientName("");
+    setPhoneLast4("");
+    setFoundClients([]);
+  }
+
   async function loadData() {
-    const [mastersData, servicesData, optionsData] = await Promise.all([
-      getMasters(),
-      getServices(),
-      getServiceOptions(),
-    ]);
+    try {
+      setLoading(true);
 
-    setMasters(mastersData);
-    setServices(servicesData);
-    setOptions(optionsData);
+      const [mastersData, servicesData, optionsData] = await Promise.all([
+        getMasters(),
+        getServices(),
+        getServiceOptions(),
+      ]);
 
-    setMasterId(mastersData[0]?.id ?? null);
-    setServiceId(servicesData.find((item) => item.category === "Ресницы")?.id ?? null);
+      setMasters(mastersData);
+      setServices(servicesData);
+      setOptions(optionsData);
+
+      const queryMasterId = searchParams.get("masterId");
+      const queryServiceId = searchParams.get("serviceId");
+      const queryStartTime = searchParams.get("startTime");
+
+      if (queryMasterId) {
+        setMasterId(Number(queryMasterId));
+      } else {
+        setMasterId(mastersData[0]?.id ?? null);
+      }
+
+      if (queryServiceId) {
+        const service = servicesData.find(
+          (item) => item.id === Number(queryServiceId)
+        );
+
+        setServiceId(service?.id ?? null);
+        setCategory(service?.category ?? "Ресницы");
+      } else {
+        const firstLashService = servicesData.find(
+          (item) => item.category === "Ресницы"
+        );
+
+        setServiceId(firstLashService?.id ?? servicesData[0]?.id ?? null);
+        setCategory(firstLashService?.category ?? servicesData[0]?.category ?? "Ресницы");
+      }
+
+      if (queryStartTime) {
+        const startDate = new Date(queryStartTime);
+
+        setDate(startDate.toISOString().slice(0, 10));
+        setTime(startDate.toTimeString().slice(0, 5));
+      }
+    } catch {
+      showToast("Котик не смог подготовить форму записи", "error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit() {
     if (!clientName || !masterId || !serviceId) {
-      alert("Заполни клиента, мастера и услугу");
+      showToast("Заполни клиента, мастера и услугу", "error");
       return;
     }
 
     const fakePhone = phoneLast4 ? `8700000${phoneLast4}` : undefined;
-
     const startTime = new Date(`${date}T${time}:00`).toISOString();
 
     try {
+      setSaving(true);
+
       await createAppointment({
-        client: {
-          name: clientName,
-          phone: fakePhone,
-          notes,
-        },
+        clientId: selectedClient?.id,
+
+        client: selectedClient
+          ? undefined
+          : {
+              name: clientName,
+              phone: fakePhone,
+              notes,
+            },
+
         masterId,
         serviceId,
         optionIds,
@@ -99,20 +219,53 @@ export function NewAppointmentPage() {
         notes,
       });
 
+      showToast("Котик создал запись", "success");
       navigate("/today");
     } catch (error: any) {
       if (error?.response?.status === 409) {
-        alert("Это время уже занято у мастера");
+        showToast("Это время уже занято у мастера", "error");
         return;
       }
 
-      alert("Ошибка при создании записи");
+      showToast("Ошибка при создании записи", "error");
+    } finally {
+      setSaving(false);
     }
   }
 
   useEffect(() => {
     loadData();
   }, []);
+
+  if (loading) {
+    return (
+      <main className="mobile-page new-page">
+        <header className="form-header">
+          <button onClick={() => navigate(-1)}>
+            <ArrowLeft size={22} />
+            Отмена
+          </button>
+
+          <h1>Новая запись</h1>
+
+          <button className="save-link" disabled>
+            ...
+          </button>
+        </header>
+
+        <CuteLoader text="Котик готовит форму записи..." />
+        <ListSkeleton count={5} />
+
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </main>
+    );
+  }
 
   return (
     <main className="mobile-page new-page">
@@ -124,24 +277,68 @@ export function NewAppointmentPage() {
 
         <h1>Новая запись</h1>
 
-        <button className="save-link" onClick={handleSubmit}>
-          Сохранить
+        <button className="save-link" onClick={handleSubmit} disabled={saving}>
+          {saving ? "..." : "Сохранить"}
         </button>
       </header>
 
       <section className="form-section">
-        <input
-          className="soft-input"
-          placeholder="Имя клиента"
-          value={clientName}
-          onChange={(event) => setClientName(event.target.value)}
-        />
+        {saving && <CuteLoader text="Котик создает запись..." />}
+
+        <div className="client-search-wrapper">
+          <input
+            className="soft-input"
+            placeholder="Имя клиента или последние 4 цифры"
+            value={clientSearch}
+            onChange={(event) => searchClients(event.target.value)}
+            disabled={saving}
+          />
+
+          {searchingClients && (
+            <p className="client-search-hint">Котик ищет клиента...</p>
+          )}
+
+          {selectedClient && (
+            <div className="selected-client-box">
+              <div>
+                <b>{selectedClient.name}</b>
+                <span>
+                  {selectedClient.phoneLast4
+                    ? `****${selectedClient.phoneLast4}`
+                    : "номер не указан"}
+                </span>
+              </div>
+
+              <button onClick={clearSelectedClient} disabled={saving}>Сменить</button>
+            </div>
+          )}
+
+          {!selectedClient && foundClients.length > 0 && (
+            <div className="client-search-results">
+              {foundClients.map((client) => (
+                <button key={client.id} onClick={() => selectClient(client)} disabled={saving}>
+                  <div>
+                    <b>{client.name}</b>
+                    <span>
+                      {client.phoneLast4
+                        ? `****${client.phoneLast4}`
+                        : "номер не указан"}
+                    </span>
+                  </div>
+
+                  <small>Выбрать</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <input
           className="soft-input"
-          placeholder="0606"
+          placeholder="Последние 4 цифры телефона"
           value={phoneLast4}
           maxLength={4}
+          disabled={Boolean(selectedClient) || saving}
           onChange={(event) => setPhoneLast4(event.target.value)}
         />
 
@@ -151,8 +348,11 @@ export function NewAppointmentPage() {
           {masters.map((master) => (
             <button
               key={master.id}
-              className={masterId === master.id ? "choice active-choice" : "choice"}
+              className={
+                masterId === master.id ? "choice active-choice" : "choice"
+              }
               onClick={() => setMasterId(master.id)}
+              disabled={saving}
             >
               <b>{master.name}</b>
               <span>{master.colorName}</span>
@@ -169,10 +369,15 @@ export function NewAppointmentPage() {
               className={category === item ? "category active-red" : "category"}
               onClick={() => {
                 setCategory(item);
-                const firstService = services.find((service) => service.category === item);
+
+                const firstService = services.find(
+                  (service) => service.category === item
+                );
+
                 setServiceId(firstService?.id ?? null);
                 setOptionIds([]);
               }}
+              disabled={saving}
             >
               {item}
             </button>
@@ -185,8 +390,11 @@ export function NewAppointmentPage() {
           {filteredServices.map((service) => (
             <button
               key={service.id}
-              className={serviceId === service.id ? "choice active-choice" : "choice"}
+              className={
+                serviceId === service.id ? "choice active-choice" : "choice"
+              }
               onClick={() => setServiceId(service.id)}
+              disabled={saving}
             >
               <b>{service.name.replace("Наращивание ресниц ", "")}</b>
               <span>₸{service.basePrice.toLocaleString("ru-RU")}</span>
@@ -203,9 +411,12 @@ export function NewAppointmentPage() {
                 <button
                   key={option.id}
                   className={
-                    optionIds.includes(option.id) ? "choice active-choice" : "choice"
+                    optionIds.includes(option.id)
+                      ? "choice active-choice"
+                      : "choice"
                   }
                   onClick={() => toggleOption(option.id)}
+                  disabled={saving}
                 >
                   <b>{option.name}</b>
                   <span>+₸{option.priceDelta.toLocaleString("ru-RU")}</span>
@@ -222,6 +433,7 @@ export function NewAppointmentPage() {
               value={date}
               type="date"
               onChange={(event) => setDate(event.target.value)}
+              disabled={saving}
             />
           </label>
 
@@ -231,6 +443,7 @@ export function NewAppointmentPage() {
               value={time}
               type="time"
               onChange={(event) => setTime(event.target.value)}
+              disabled={saving}
             />
           </label>
         </div>
@@ -240,23 +453,38 @@ export function NewAppointmentPage() {
           placeholder="Например: ресницы и брови, натуральный эффект"
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
+          disabled={saving}
         />
 
         <div className="summary-box">
-          <p>{clientName || "Клиент"} · {phoneLast4 || "0000"}</p>
+          <p>
+            {selectedClient ? selectedClient.name : clientName || "Клиент"} ·{" "}
+            {selectedClient?.phoneLast4 ?? phoneLast4 ?? "0000"}
+          </p>
+
           <b>
-            {selectedMaster?.name || "Мастер"} · {selectedService?.name || "Услуга"}
+            {selectedMaster?.name || "Мастер"} ·{" "}
+            {selectedService?.name || "Услуга"}
           </b>
+
           <span>
             Длительность: {totalDuration} мин · Итого: ₸
             {totalPrice.toLocaleString("ru-RU")}
           </span>
         </div>
 
-        <button className="wide-red-button" onClick={handleSubmit}>
-          Создать запись
+        <button className="wide-red-button" onClick={handleSubmit} disabled={saving}>
+          {saving ? "Создаем..." : "Создать запись"}
         </button>
       </section>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
       <BottomNav />
     </main>

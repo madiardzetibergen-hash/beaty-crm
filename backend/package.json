@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "main": "src/server.ts",
   "scripts": {
-    "dev": "tsx src/server.ts",
-    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
-    "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
-    "db:push": "drizzle-kit push --config=drizzle.config.ts",
-    "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
-    "db:seed": "tsx src/db/seed.ts"
-  },
+  "dev": "tsx src/server.ts",
+  "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+  "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
+  "db:push": "drizzle-kit push --config=drizzle.config.ts",
+  "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
+  "db:seed": "tsx src/db/seed.ts",
+  "db:update-prices": "tsx src/db/update-prices.ts",
+  "db:reset-data": "tsx src/db/reset-data.ts"
+  
+},
   "dependencies": {
     "@neondatabase/serverless": "latest",
     "bcryptjs": "latest",

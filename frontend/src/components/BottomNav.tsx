@@ -1,4 +1,10 @@
-import { CalendarDays, Home, MoreHorizontal, UserRound, UsersRound } from "lucide-react";
+import {
+  CalendarDays,
+  Home,
+  MoreHorizontal,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const items = [

@@ -148,14 +148,17 @@ appointmentsRoutes.get("/:id", authMiddleware, async (req, res) => {
     options,
   });
 });
-
 const createAppointmentSchema = z.object({
-  client: z.object({
-    name: z.string().min(2),
-    phone: z.string().optional(),
-    instagram: z.string().optional(),
-    notes: z.string().optional(),
-  }),
+  clientId: z.number().int().optional(),
+
+  client: z
+    .object({
+      name: z.string().min(2),
+      phone: z.string().optional(),
+      instagram: z.string().optional(),
+      notes: z.string().optional(),
+    })
+    .optional(),
 
   masterId: z.number().int(),
   serviceId: z.number().int(),
@@ -174,6 +177,12 @@ appointmentsRoutes.post(
   async (req, res) => {
     try {
       const data = createAppointmentSchema.parse(req.body);
+
+      if (!data.clientId && !data.client) {
+        return res.status(400).json({
+          message: "clientId or client data is required",
+        });
+      }
 
       const [service] = await db
         .select()
@@ -229,23 +238,52 @@ appointmentsRoutes.post(
         });
       }
 
-      const phoneLast4 = getPhoneLast4(data.client.phone) ?? undefined;
+      let finalClientId = data.clientId;
+      let createdClient = null;
 
-      const [createdClient] = await db
-        .insert(clients)
-        .values({
-          name: data.client.name,
-          phone: data.client.phone,
-          phoneLast4,
-          instagram: data.client.instagram,
-          notes: data.client.notes,
-        })
-        .returning();
+      if (data.clientId) {
+        const existingClient = await db
+          .select()
+          .from(clients)
+          .where(eq(clients.id, data.clientId));
+
+        if (!existingClient[0]) {
+          return res.status(404).json({
+            message: "Client not found",
+          });
+        }
+
+        finalClientId = existingClient[0].id;
+      }
+
+      if (!data.clientId && data.client) {
+        const phoneLast4 = getPhoneLast4(data.client.phone) ?? undefined;
+
+        const [newClient] = await db
+          .insert(clients)
+          .values({
+            name: data.client.name,
+            phone: data.client.phone,
+            phoneLast4,
+            instagram: data.client.instagram,
+            notes: data.client.notes,
+          })
+          .returning();
+
+        createdClient = newClient;
+        finalClientId = newClient.id;
+      }
+
+      if (!finalClientId) {
+        return res.status(400).json({
+          message: "Client could not be resolved",
+        });
+      }
 
       const [createdAppointment] = await db
         .insert(appointments)
         .values({
-          clientId: createdClient.id,
+          clientId: finalClientId,
           masterId: data.masterId,
           serviceId: data.serviceId,
           startTime,
@@ -268,6 +306,7 @@ appointmentsRoutes.post(
       return res.status(201).json({
         appointment: createdAppointment,
         client: createdClient,
+        clientId: finalClientId,
         totalDuration,
         totalPrice,
         options,

@@ -5,13 +5,22 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getAppointment, updateAppointment } from "../api/appointments";
 import { getMasters } from "../api/masters";
 import { getServiceOptions, getServices } from "../api/services";
+import { CuteLoader } from "../components/CuteLoader";
+import { ListSkeleton } from "../components/Skeleton";
+import { Toast } from "../components/Toast";
+import { BottomNav } from "../components/BottomNav";
+
 import type {
   AppointmentDetails,
   Master,
   Service,
   ServiceOption,
 } from "../types";
-import { BottomNav } from "../components/BottomNav";
+
+type ToastState = {
+  message: string;
+  type: "success" | "error" | "info";
+};
 
 function toDateInput(value: string) {
   return new Date(value).toISOString().slice(0, 10);
@@ -41,6 +50,11 @@ export function EditAppointmentPage() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const selectedService = services.find((service) => service.id === serviceId);
   const selectedMaster = masters.find((master) => master.id === masterId);
@@ -77,6 +91,10 @@ export function EditAppointmentPage() {
     return base + extra;
   }, [selectedService, selectedOptions]);
 
+  function showToast(message: string, type: ToastState["type"] = "info") {
+    setToast({ message, type });
+  }
+
   function toggleOption(id: number) {
     setOptionIds((prev) =>
       prev.includes(id)
@@ -88,37 +106,47 @@ export function EditAppointmentPage() {
   async function loadData() {
     if (!id) return;
 
-    const [appointmentData, mastersData, servicesData, optionsData] =
-      await Promise.all([
-        getAppointment(id),
-        getMasters(),
-        getServices(),
-        getServiceOptions(),
-      ]);
+    try {
+      setLoading(true);
 
-    setAppointment(appointmentData);
-    setMasters(mastersData);
-    setServices(servicesData);
-    setOptions(optionsData);
+      const [appointmentData, mastersData, servicesData, optionsData] =
+        await Promise.all([
+          getAppointment(id),
+          getMasters(),
+          getServices(),
+          getServiceOptions(),
+        ]);
 
-    setMasterId(appointmentData.masterId);
-    setServiceId(appointmentData.serviceId);
-    setCategory(appointmentData.serviceCategory);
-    setOptionIds(appointmentData.options.map((option) => option.id));
-    setDate(toDateInput(appointmentData.startTime));
-    setTime(toTimeInput(appointmentData.startTime));
-    setNotes(appointmentData.notes ?? "");
+      setAppointment(appointmentData);
+      setMasters(mastersData);
+      setServices(servicesData);
+      setOptions(optionsData);
+
+      setMasterId(appointmentData.masterId);
+      setServiceId(appointmentData.serviceId);
+      setCategory(appointmentData.serviceCategory);
+      setOptionIds(appointmentData.options.map((option) => option.id));
+      setDate(toDateInput(appointmentData.startTime));
+      setTime(toTimeInput(appointmentData.startTime));
+      setNotes(appointmentData.notes ?? "");
+    } catch {
+      showToast("Котик не смог загрузить запись для переноса", "error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSubmit() {
     if (!id || !masterId || !serviceId || !date || !time) {
-      alert("Заполни мастера, услугу, дату и время");
+      showToast("Заполни мастера, услугу, дату и время", "error");
       return;
     }
 
     const startTime = new Date(`${date}T${time}:00`).toISOString();
 
     try {
+      setSaving(true);
+
       await updateAppointment(id, {
         masterId,
         serviceId,
@@ -128,14 +156,17 @@ export function EditAppointmentPage() {
         status: "rescheduled",
       });
 
+      showToast("Котик перенес запись", "success");
       navigate(`/appointments/${id}`);
     } catch (error: any) {
       if (error?.response?.status === 409) {
-        alert("Это время уже занято у мастера");
+        showToast("Это время уже занято у мастера", "error");
         return;
       }
 
-      alert("Ошибка при обновлении записи");
+      showToast("Ошибка при обновлении записи", "error");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -143,10 +174,48 @@ export function EditAppointmentPage() {
     loadData();
   }, [id]);
 
+  if (loading) {
+    return (
+      <main className="mobile-page new-page">
+        <header className="form-header">
+          <button onClick={() => navigate(-1)}>
+            <ArrowLeft size={22} />
+            Назад
+          </button>
+
+          <h1>Перенос записи</h1>
+
+          <button className="save-link" disabled>
+            ...
+          </button>
+        </header>
+
+        <CuteLoader text="Котик готовит форму переноса..." />
+        <ListSkeleton count={4} />
+
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </main>
+    );
+  }
+
   if (!appointment) {
     return (
-      <main className="mobile-page">
-        <p className="muted">Загрузка...</p>
+      <main className="mobile-page new-page">
+        <CuteLoader text="Котик не нашел запись..." />
+
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
       </main>
     );
   }
@@ -161,12 +230,14 @@ export function EditAppointmentPage() {
 
         <h1>Перенос записи</h1>
 
-        <button className="save-link" onClick={handleSubmit}>
-          Сохранить
+        <button className="save-link" onClick={handleSubmit} disabled={saving}>
+          {saving ? "..." : "Сохранить"}
         </button>
       </header>
 
       <section className="form-section">
+        {saving && <CuteLoader text="Котик сохраняет изменения..." />}
+
         <div className="readonly-client-box">
           <span>Клиент</span>
           <b>
@@ -184,6 +255,7 @@ export function EditAppointmentPage() {
                 masterId === master.id ? "choice active-choice" : "choice"
               }
               onClick={() => setMasterId(master.id)}
+              disabled={saving}
             >
               <b>{master.name}</b>
               <span>{master.colorName}</span>
@@ -206,6 +278,7 @@ export function EditAppointmentPage() {
                 setServiceId(firstService?.id ?? null);
                 setOptionIds([]);
               }}
+              disabled={saving}
             >
               {item}
             </button>
@@ -222,6 +295,7 @@ export function EditAppointmentPage() {
                 serviceId === service.id ? "choice active-choice" : "choice"
               }
               onClick={() => setServiceId(service.id)}
+              disabled={saving}
             >
               <b>{service.name.replace("Наращивание ресниц ", "")}</b>
               <span>₸{service.basePrice.toLocaleString("ru-RU")}</span>
@@ -243,6 +317,7 @@ export function EditAppointmentPage() {
                       : "choice"
                   }
                   onClick={() => toggleOption(option.id)}
+                  disabled={saving}
                 >
                   <b>{option.name}</b>
                   <span>+₸{option.priceDelta.toLocaleString("ru-RU")}</span>
@@ -259,6 +334,7 @@ export function EditAppointmentPage() {
               value={date}
               type="date"
               onChange={(event) => setDate(event.target.value)}
+              disabled={saving}
             />
           </label>
 
@@ -268,6 +344,7 @@ export function EditAppointmentPage() {
               value={time}
               type="time"
               onChange={(event) => setTime(event.target.value)}
+              disabled={saving}
             />
           </label>
         </div>
@@ -277,6 +354,7 @@ export function EditAppointmentPage() {
           placeholder="Комментарий"
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
+          disabled={saving}
         />
 
         <div className="summary-box">
@@ -293,10 +371,18 @@ export function EditAppointmentPage() {
           </span>
         </div>
 
-        <button className="wide-red-button" onClick={handleSubmit}>
-          Сохранить изменения
+        <button className="wide-red-button" onClick={handleSubmit} disabled={saving}>
+          {saving ? "Сохраняем..." : "Сохранить изменения"}
         </button>
       </section>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
       <BottomNav />
     </main>

@@ -135,3 +135,26 @@ export const appointmentOptions = pgTable("appointment_options", {
     .references(() => serviceOptions.id)
     .notNull(),
 });
+export const requestStatusEnum = pgEnum("request_status", [
+  "new",
+  "in_progress",
+  "done",
+  "rejected",
+]);
+export const adminRequests = pgTable("admin_requests", {
+  id: serial("id").primaryKey(),
+
+  title: varchar("title", { length: 150 }).notNull(),
+  message: text("message").notNull(),
+
+  status: requestStatusEnum("status").default("new").notNull(),
+
+  createdBy: integer("created_by")
+    .references(() => users.id)
+    .notNull(),
+
+  masterId: integer("master_id").references(() => masters.id),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

@@ -8,6 +8,12 @@ import { MastersPage } from "./pages/MastersPage";
 import { NewAppointmentPage } from "./pages/NewAppointmentPage";
 import { TodayPage } from "./pages/TodayPage";
 import { EditAppointmentPage } from "./pages/EditAppointmentPage";
+import { ClientDetailsPage } from "./pages/ClientDetailsPage";
+import { ClientsPage } from "./pages/ClientsPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { MorePage } from "./pages/MorePage";
+import { RequestsPage } from "./pages/RequestsPage";
+import { NewRequestPage } from "./pages/NewRequestPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = getToken();
@@ -32,7 +38,41 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+  <Route
+  path="/profile"
+  element={
+    <ProtectedRoute>
+      <ProfilePage />
+    </ProtectedRoute>
+  }
+/>
 
+<Route
+  path="/more"
+  element={
+    <ProtectedRoute>
+      <MorePage />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/requests"
+  element={
+    <ProtectedRoute>
+      <RequestsPage />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/requests/new"
+  element={
+    <ProtectedRoute>
+      <NewRequestPage />
+    </ProtectedRoute>
+  }
+/>
       <Route
         path="/calendar"
         element={
@@ -41,6 +81,23 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route
+  path="/clients"
+  element={
+    <ProtectedRoute>
+      <ClientsPage />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/clients/:id"
+  element={
+    <ProtectedRoute>
+      <ClientDetailsPage />
+    </ProtectedRoute>
+  }
+/>
 
       <Route
         path="/appointments/new"

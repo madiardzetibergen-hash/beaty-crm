@@ -10,6 +10,15 @@ import {
 } from "../api/appointments";
 import type { AppointmentDetails } from "../types";
 import { BottomNav } from "../components/BottomNav";
+import { CuteLoader } from "../components/CuteLoader";
+import { ListSkeleton } from "../components/Skeleton";
+import { Toast } from "../components/Toast";
+import { EmptyState } from "../components/EmptyState";
+
+type ToastState = {
+  message: string;
+  type: "success" | "error" | "info";
+};
 
 function getTimeRange(start: string, end: string) {
   return `${format(new Date(start), "HH:mm")}–${format(new Date(end), "HH:mm")}`;
@@ -20,6 +29,9 @@ export function AppointmentDetailsPage() {
   const navigate = useNavigate();
 
   const [appointment, setAppointment] = useState<AppointmentDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const whatsappText = useMemo(() => {
     if (!appointment) return "";
@@ -33,35 +45,62 @@ export function AppointmentDetailsPage() {
 Пожалуйста, подтвердите запись.`;
   }, [appointment]);
 
+  function showToast(message: string, type: ToastState["type"] = "info") {
+    setToast({ message, type });
+  }
+
   async function loadAppointment() {
     if (!id) return;
 
-    const data = await getAppointment(id);
-    setAppointment(data);
+    try {
+      setLoading(true);
+      const data = await getAppointment(id);
+      setAppointment(data);
+    } catch {
+      showToast("Котик не смог загрузить запись", "error");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleComplete() {
     if (!appointment) return;
 
-    await updateAppointmentStatus(appointment.id, "completed", appointment.notes ?? undefined);
-    await loadAppointment();
+    try {
+      setActionLoading(true);
+      await updateAppointmentStatus(appointment.id, "completed", appointment.notes ?? undefined);
+      await loadAppointment();
+      showToast("Запись завершена", "success");
+    } catch {
+      showToast("Не получилось завершить запись", "error");
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   async function handleCancel() {
     if (!appointment) return;
 
-    await cancelAppointment(appointment.id);
-    navigate("/today");
+    try {
+      setActionLoading(true);
+      await cancelAppointment(appointment.id);
+      showToast("Запись отменена", "success");
+      navigate("/today");
+    } catch {
+      showToast("Не получилось отменить запись", "error");
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   async function copyWhatsappText() {
     await navigator.clipboard.writeText(whatsappText);
-    alert("Текст скопирован");
+    showToast("Котик скопировал текст", "success");
   }
 
   function openWhatsapp() {
     if (!appointment?.clientPhone) {
-      alert("У клиента нет полного номера телефона");
+      showToast("У клиента нет полного номера телефона", "error");
       return;
     }
 
@@ -71,14 +110,67 @@ export function AppointmentDetailsPage() {
     window.open(url, "_blank");
   }
 
+  function callClient() {
+    if (!appointment?.clientPhone) {
+      showToast("У клиента нет полного номера телефона", "error");
+      return;
+    }
+
+    window.location.href = `tel:${appointment.clientPhone}`;
+  }
+
   useEffect(() => {
     loadAppointment();
   }, [id]);
 
+  if (loading) {
+    return (
+      <main className="mobile-page details-page">
+        <header className="details-nav">
+          <button onClick={() => navigate(-1)}>
+            <ArrowLeft size={24} />
+          </button>
+          <h1>Детали записи</h1>
+        </header>
+
+        <CuteLoader text="Котик ищет детали записи..." />
+        <ListSkeleton count={3} />
+
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
+      </main>
+    );
+  }
+
   if (!appointment) {
     return (
-      <main className="mobile-page">
-        <p className="muted">Загрузка...</p>
+      <main className="mobile-page details-page">
+        <header className="details-nav">
+          <button onClick={() => navigate(-1)}>
+            <ArrowLeft size={24} />
+          </button>
+          <h1>Детали записи</h1>
+        </header>
+
+        <EmptyState
+          title="Запись не найдена"
+          text="Котик проверил календарь, но такой записи не увидел."
+          actionText="Назад"
+          onAction={() => navigate(-1)}
+        />
+
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        )}
       </main>
     );
   }
@@ -91,6 +183,8 @@ export function AppointmentDetailsPage() {
         </button>
         <h1>Детали записи</h1>
       </header>
+
+      {actionLoading && <CuteLoader text="Котик обновляет запись..." />}
 
       <section
         className="details-hero"
@@ -138,31 +232,32 @@ export function AppointmentDetailsPage() {
       </section>
 
       <section className="action-grid">
-        <button className="green-button" onClick={openWhatsapp}>
+        <button className="green-button" onClick={openWhatsapp} disabled={actionLoading}>
           <Send size={20} />
           WhatsApp
         </button>
 
-        <button className="dark-button">
+        <button className="dark-button" onClick={callClient} disabled={actionLoading}>
           <Phone size={20} />
           Позвонить
         </button>
 
-      <button
-  className="light-button"
-  onClick={() => navigate(`/appointments/${appointment.id}/edit`)}
->
-  <CalendarDays size={20} />
-  Перенести
-</button>
+        <button
+          className="light-button"
+          onClick={() => navigate(`/appointments/${appointment.id}/edit`)}
+          disabled={actionLoading}
+        >
+          <CalendarDays size={20} />
+          Перенести
+        </button>
 
-        <button className="light-button" onClick={handleCancel}>
+        <button className="light-button" onClick={handleCancel} disabled={actionLoading}>
           <X size={20} />
           Отменить
         </button>
       </section>
 
-      <button className="wide-red-button" onClick={handleComplete}>
+      <button className="wide-red-button" onClick={handleComplete} disabled={actionLoading}>
         <Check size={22} />
         Завершить
       </button>
@@ -182,6 +277,14 @@ export function AppointmentDetailsPage() {
           </button>
         </div>
       </section>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
       <BottomNav />
     </main>

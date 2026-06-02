@@ -15,12 +15,15 @@ export async function getAppointment(id: string | number) {
 }
 
 export type CreateAppointmentPayload = {
-  client: {
+  clientId?: number;
+
+  client?: {
     name: string;
     phone?: string;
     instagram?: string;
     notes?: string;
   };
+
   masterId: number;
   serviceId: number;
   optionIds: number[];
@@ -46,11 +49,11 @@ export async function updateAppointmentStatus(
   return response.data;
 }
 
-
 export async function cancelAppointment(id: number | string) {
   const response = await api.delete(`/appointments/${id}`);
   return response.data;
 }
+
 export type UpdateAppointmentPayload = {
   masterId?: number;
   serviceId?: number;

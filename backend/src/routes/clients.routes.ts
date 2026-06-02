@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { ilike, or, eq } from "drizzle-orm";
 import { db } from "../db";
-import { clients } from "../db/schema";
+import { appointments, clients, masters, services } from "../db/schema";
 import { authMiddleware } from "../middleware/auth.middleware";
 import { getPhoneLast4 } from "../utils/time";
 
@@ -78,4 +78,32 @@ clientsRoutes.post("/", authMiddleware, async (req, res) => {
       error,
     });
   }
+});
+clientsRoutes.get("/:id/appointments", authMiddleware, async (req, res) => {
+  const clientId = Number(req.params.id);
+
+  const data = await db
+    .select({
+      id: appointments.id,
+      startTime: appointments.startTime,
+      endTime: appointments.endTime,
+      totalPrice: appointments.totalPrice,
+      status: appointments.status,
+      notes: appointments.notes,
+
+      masterId: masters.id,
+      masterName: masters.name,
+      masterColorName: masters.colorName,
+      masterColorHex: masters.colorHex,
+
+      serviceId: services.id,
+      serviceName: services.name,
+      serviceCategory: services.category,
+    })
+    .from(appointments)
+    .leftJoin(masters, eq(appointments.masterId, masters.id))
+    .leftJoin(services, eq(appointments.serviceId, services.id))
+    .where(eq(appointments.clientId, clientId));
+
+  return res.json(data);
 });

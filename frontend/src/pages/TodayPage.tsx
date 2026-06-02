@@ -6,11 +6,22 @@ import { useNavigate } from "react-router-dom";
 
 import { getAppointments } from "../api/appointments";
 import { getMasters } from "../api/masters";
+
 import type { AppointmentListItem, Master } from "../types";
+
 import { AppointmentCard } from "../components/AppointmentCard";
 import { BottomNav } from "../components/BottomNav";
 import { MasterFilter } from "../components/MasterFilter";
 import { StatCard } from "../components/StatCard";
+import { CuteLoader } from "../components/CuteLoader";
+import { EmptyState } from "../components/EmptyState";
+import { ListSkeleton } from "../components/Skeleton";
+import { Toast } from "../components/Toast";
+
+type ToastState = {
+  message: string;
+  type: "success" | "error" | "info";
+};
 
 function todayIsoDate() {
   return format(new Date(), "yyyy-MM-dd");
@@ -23,6 +34,7 @@ export function TodayPage() {
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([]);
   const [selectedMasterId, setSelectedMasterId] = useState<number | "all">("all");
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const visibleAppointments = useMemo(() => {
     if (selectedMasterId === "all") return appointments;
@@ -33,6 +45,10 @@ export function TodayPage() {
   const totalPlan = useMemo(() => {
     return visibleAppointments.reduce((sum, item) => sum + item.totalPrice, 0);
   }, [visibleAppointments]);
+
+  function showToast(message: string, type: ToastState["type"] = "info") {
+    setToast({ message, type });
+  }
 
   async function loadData() {
     try {
@@ -45,6 +61,8 @@ export function TodayPage() {
 
       setMasters(mastersData);
       setAppointments(appointmentsData);
+    } catch {
+      showToast("Котик не смог загрузить записи на сегодня", "error");
     } finally {
       setLoading(false);
     }
@@ -67,7 +85,7 @@ export function TodayPage() {
             <Search size={22} />
           </button>
 
-          <button className="circle-button">
+          <button className="circle-button" onClick={() => navigate("/profile")}>
             <UserRound size={22} />
           </button>
         </div>
@@ -87,7 +105,12 @@ export function TodayPage() {
       </section>
 
       <section className="appointments-list">
-        {loading && <p className="muted">Загрузка...</p>}
+        {loading && (
+          <>
+            <CuteLoader text="Котик ищет записи на сегодня..." />
+            <ListSkeleton count={4} />
+          </>
+        )}
 
         {!loading &&
           visibleAppointments.map((appointment) => (
@@ -95,16 +118,26 @@ export function TodayPage() {
           ))}
 
         {!loading && visibleAppointments.length === 0 && (
-          <div className="empty-state">
-            <h3>Записей нет</h3>
-            <p>Нажми плюс, чтобы создать новую запись.</p>
-          </div>
+          <EmptyState
+            title="Записей пока нет"
+            text="Котик говорит: день свободный. Можно добавить первую запись."
+            actionText="Создать запись"
+            onAction={() => navigate("/appointments/new")}
+          />
         )}
       </section>
 
       <button className="fab" onClick={() => navigate("/appointments/new")}>
         <Plus size={30} />
       </button>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
       <BottomNav />
     </main>

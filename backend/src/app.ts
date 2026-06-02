@@ -6,6 +6,8 @@ import { mastersRoutes } from "./routes/masters.routes";
 import { servicesRoutes } from "./routes/services.routes";
 import { clientsRoutes } from "./routes/clients.routes";
 import { appointmentsRoutes } from "./routes/appointments.routes";
+import { freeSlotsRoutes } from "./routes/free-slots.routes";
+import { requestsRoutes } from "./routes/requests.routes";
 
 export const app = express();
 
@@ -34,3 +36,5 @@ app.use("/api/masters", mastersRoutes);
 app.use("/api/services", servicesRoutes);
 app.use("/api/clients", clientsRoutes);
 app.use("/api/appointments", appointmentsRoutes);
+app.use("/api/free-slots", freeSlotsRoutes);
+app.use("/api/requests", requestsRoutes);

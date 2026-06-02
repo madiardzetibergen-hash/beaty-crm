@@ -2,15 +2,37 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { db } from "./index";
 import {
+  adminRequests,
+  appointmentOptions,
+  appointments,
+  clients,
   masters,
-  services,
   serviceOptions,
+  services,
   users,
 } from "./schema";
 
-async function seed() {
-  console.log("Seeding database...");
+async function resetData() {
+  console.log("Cleaning database...");
 
+  // 1. Сначала удаляем зависимые таблицы
+  await db.delete(appointmentOptions);
+  await db.delete(adminRequests);
+  await db.delete(appointments);
+
+  // 2. Потом клиентов и пользователей
+  await db.delete(clients);
+  await db.delete(users);
+
+  // 3. Потом справочники
+  await db.delete(masters);
+  await db.delete(services);
+  await db.delete(serviceOptions);
+
+  console.log("Database cleaned.");
+  console.log("Seeding fresh data...");
+
+  // МАСТЕРА
   const createdMasters = await db
     .insert(masters)
     .values([
@@ -35,30 +57,31 @@ async function seed() {
     ])
     .returning();
 
+  // УСЛУГИ — ТОП МАСТЕР
   await db.insert(services).values([
     {
       name: "Наращивание ресниц 1D",
       category: "Ресницы",
       basePrice: 10000,
-      durationMinutes: 120,
+      durationMinutes: 90,
     },
     {
       name: "Наращивание ресниц 2D",
       category: "Ресницы",
       basePrice: 11000,
-      durationMinutes: 150,
+      durationMinutes: 90,
     },
     {
       name: "Наращивание ресниц 3D",
       category: "Ресницы",
       basePrice: 12000,
-      durationMinutes: 150,
+      durationMinutes: 90,
     },
     {
       name: "Mega Volume",
       category: "Ресницы",
       basePrice: 15000,
-      durationMinutes: 150,
+      durationMinutes: 90,
     },
     {
       name: "Нижние ресницы",
@@ -79,25 +102,32 @@ async function seed() {
       durationMinutes: 60,
     },
     {
-      name: "Ламинирование бровей",
+      name: "Ламинирование бровей + коррекция + уход",
       category: "Брови",
       basePrice: 7000,
       durationMinutes: 60,
     },
     {
-      name: "Ламинирование бровей с окрашиванием",
+      name: "Ламинирование бровей с окрашиванием + коррекция + уход",
       category: "Брови",
       basePrice: 9000,
       durationMinutes: 70,
     },
     {
-      name: "Ламинирование ресниц с окрашиванием",
+      name: "Усики",
+      category: "Брови",
+      basePrice: 1500,
+      durationMinutes: 20,
+    },
+    {
+      name: "Ламинирование ресниц с окрашиванием + уход",
       category: "Ламинирование",
       basePrice: 8000,
       durationMinutes: 60,
     },
   ]);
 
+  // ДОП. ОПЦИИ
   await db.insert(serviceOptions).values([
     {
       name: "Лучики",
@@ -129,28 +159,21 @@ async function seed() {
       priceDelta: 1500,
       durationDeltaMinutes: 15,
     },
-    {
-      name: "Усики",
-      category: "Брови",
-      priceDelta: 1500,
-      durationDeltaMinutes: 20,
-    },
   ]);
 
+  // ПОЛЬЗОВАТЕЛИ
   const adminPasswordHash = await bcrypt.hash("1437Жан", 10);
-
-  await db.insert(users).values({
-    name: "Диана",
-    phone: "77000000000",
-    email: "admin@dracarys.kz",
-    passwordHash: adminPasswordHash,
-    role: "admin",
-    masterId: null,
-  });
-
   const masterPasswordHash = await bcrypt.hash("123456", 10);
 
   await db.insert(users).values([
+    {
+      name: "Диана",
+      phone: "77000000000",
+      email: "admin@dracarys.kz",
+      passwordHash: adminPasswordHash,
+      role: "admin",
+      masterId: null,
+    },
     {
       name: "Аяна",
       phone: "77000000001",
@@ -177,10 +200,19 @@ async function seed() {
     },
   ]);
 
-  console.log("Seed completed.");
+  console.log("Fresh seed completed.");
+  console.log("");
+  console.log("Admin login:");
+  console.log("admin@dracarys.kz");
+  console.log("1437Жан");
+  console.log("");
+  console.log("Master logins:");
+  console.log("ayana@dracarys.kz / 123456");
+  console.log("aziza@dracarys.kz / 123456");
+  console.log("dilnara@dracarys.kz / 123456");
 }
 
-seed().catch((error) => {
+resetData().catch((error) => {
   console.error(error);
   process.exit(1);
 });
