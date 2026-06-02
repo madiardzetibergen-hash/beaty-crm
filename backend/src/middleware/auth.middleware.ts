@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 export type AuthUser = {
@@ -32,9 +32,7 @@ export function authMiddleware(
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as AuthUser;
-
     req.user = payload;
-
     next();
   } catch {
     return res.status(401).json({

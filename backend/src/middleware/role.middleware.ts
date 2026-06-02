@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 
 export function allowRoles(roles: Array<"owner" | "admin" | "master">) {
   return function (req: Request, res: Response, next: NextFunction) {
